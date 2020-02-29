@@ -209,23 +209,23 @@ if __name__ == "__main__":
     num_train = len(lines) - num_val
     
     ## 调整非主干模型first
-    # if True:
-    #     model.compile(optimizer=Adam(lr=1e-3), loss={
-    #         'yolo_loss': lambda y_true, y_pred: y_pred})
+    if True:
+        model.compile(optimizer=Adam(lr=1e-3), loss={
+            'yolo_loss': lambda y_true, y_pred: y_pred})
 
-    #     batch_size = 16
-    #     print('Train on {} samples, val on {} samples, with batch size {}.'.format(num_train, num_val, batch_size))
-    #     model.fit_generator(data_generator(lines[:num_train], batch_size, input_shape, anchors, num_classes),
-    #             steps_per_epoch=max(1, num_train//batch_size),
-    #             validation_data=data_generator(lines[num_train:], batch_size, input_shape, anchors, num_classes),
-    #             validation_steps=max(1, num_val//batch_size),
-    #             epochs=50,
-    #             initial_epoch=0,
-    #             callbacks=[logging, checkpoint])
-    #     model.save_weights(log_dir + 'trained_weights_stage_1.h5')
+        batch_size = 16
+        print('Train on {} samples, val on {} samples, with batch size {}.'.format(num_train, num_val, batch_size))
+        model.fit_generator(data_generator(lines[:num_train], batch_size, input_shape, anchors, num_classes),
+                steps_per_epoch=max(1, num_train//batch_size),
+                validation_data=data_generator(lines[num_train:], batch_size, input_shape, anchors, num_classes),
+                validation_steps=max(1, num_val//batch_size),
+                epochs=50,
+                initial_epoch=0,
+                callbacks=[logging, checkpoint])
+        model.save_weights(log_dir + 'trained_weights_stage_1.h5')
 
-    #keras载入权值的函数,选定权值文件ep{epoch:03d}-loss{loss:.3f}-val_loss{val_loss:.3f}.h5
-    model.load_weights("logs/ep012-loss37.013-val_loss35.715.h5")
+    #keras载入训练的权值,选定权值文件ep{epoch:03d}-loss{loss:.3f}-val_loss{val_loss:.3f}.h5
+    #model.load_weights("logs/ep012-loss37.013-val_loss35.715.h5")
 
     for i in range(freeze_layers): model_body.layers[i].trainable = True
 
