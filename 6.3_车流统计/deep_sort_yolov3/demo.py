@@ -109,7 +109,7 @@ def main(video_path, output_path=""):
             bbox = track.to_tlbr()
             p0 = track.last_center()
             p1 = track.center()
-            cv2.line(frame, p0, p1, (255,0,0), 3)
+            cv2.line(frame, p0, p1, (0,0,255), 3)
             cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])),(255,255,255), 2)
             cv2.putText(frame, '%s_%d'%(track.pre_class,track.track_id),(int(bbox[0]), int(bbox[1])),cv2.FONT_HERSHEY_DUPLEX, 1, (0,0,0),1)
 
