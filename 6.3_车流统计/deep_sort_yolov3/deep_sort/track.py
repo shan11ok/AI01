@@ -80,6 +80,8 @@ class Track:
 
         self.state = TrackState.Tentative
         self.pre_class = pre_class
+        self.class_vote = {}
+        self.class_vote[pre_class] = 1
         self.features = []
         if feature is not None:
             self.features.append(feature)
@@ -153,7 +155,12 @@ class Track:
         self.mean, self.covariance = kf.update(
             self.mean, self.covariance, detection.to_xyah())
         self.features.append(detection.feature)
-
+        if detection.confidence >= 0.9:
+            if self.class_vote.get(detection.pre_class):
+                self.class_vote[detection.pre_class] +=1
+            else:
+                self.class_vote[detection.pre_class] = 1
+        self.pre_class = max(self.class_vote,key=self.class_vote.get)
         self.hits += 1
         self.time_since_update = 0
         if self.state == TrackState.Tentative and self.hits >= self._n_init:

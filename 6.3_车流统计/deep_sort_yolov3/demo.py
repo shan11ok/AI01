@@ -33,9 +33,7 @@ def main(video_path, output_path=""):
    # Definition of the parameters
     max_cosine_distance = 0.3
     nn_budget = None
-    nms_max_overlap = 1.0
-
-
+    nms_max_overlap = 0.7
 
    # deep_sort 
     model_filename = 'model_data/mars-small128.pb'
@@ -74,7 +72,7 @@ def main(video_path, output_path=""):
     #    h = int(video_capture.get(4))
     #    fourcc = cv2.VideoWriter_fourcc(*'MJPG')
     #    out = cv2.VideoWriter('output.avi', fourcc, 15, (w, h))
-    list_file = open('detection.txt', 'w')
+    #list_file = open('detection.txt', 'w')
     frame_index = -1 
         
     fps = 0.0
@@ -94,9 +92,9 @@ def main(video_path, output_path=""):
         detections = [Detection(bbox, pre_class, score, feature) for bbox, pre_class, score, feature in zip(boxs, pre_classes, scores, features)]
         
         # Run non-maxima suppression.
-        boxes = np.array([d.tlwh for d in detections])
-        scores = np.array([d.confidence for d in detections])
-        indices = preprocessing.non_max_suppression(boxes, nms_max_overlap, scores)
+        boxes_np = np.array([d.tlwh for d in detections])
+        scores_np = np.array([d.confidence for d in detections])
+        indices = preprocessing.non_max_suppression(boxes_np, nms_max_overlap, scores_np)
         detections = [detections[i] for i in indices]
         
         # Call the tracker
@@ -109,9 +107,11 @@ def main(video_path, output_path=""):
             bbox = track.to_tlbr()
             p0 = track.last_center()
             p1 = track.center()
+            #vote_str = ' '.join(['%s %d'%(x,track.class_vote[x]) for x in track.class_vote])
+            #mean_str = ' '.join(['%.1f'%(x) for x in track.mean])
             cv2.line(frame, p0, p1, (0,0,255), 3)
             cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])),(255,255,255), 2)
-            cv2.putText(frame, '%s_%d'%(track.pre_class,track.track_id),(int(bbox[0]), int(bbox[1])),cv2.FONT_HERSHEY_DUPLEX, 1, (0,0,0),1)
+            cv2.putText(frame, '%s_%d'%(track.pre_class,track.track_id),(int(bbox[0]), int(bbox[1])),cv2.FONT_HERSHEY_DUPLEX, 0.8, (0,0,0),1)
 
         for det in detections:
             bbox = det.to_tlbr()
@@ -126,18 +126,19 @@ def main(video_path, output_path=""):
         for pre_class in counter:
             cv2.putText(frame, '%s:%d'%(pre_class,counter[pre_class]), (start_x, start_y), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 255, 255), 1)
             start_y += 20
-
+        cv2.putText(frame, '%d'%(frame_index), (start_x, start_y), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 255, 255), 1)
         cv2.imshow('', frame)
         
         if writeVideo_flag:
             # save a frame
             out.write(frame)
             frame_index = frame_index + 1
-            list_file.write(str(frame_index)+' ')
-            if len(boxs) != 0:
-                for i in range(0,len(boxs)):
-                    list_file.write(str(boxs[i][0]) + ' '+str(boxs[i][1]) + ' '+str(boxs[i][2]) + ' '+str(boxs[i][3]) + ' ')
-            list_file.write('\n')
+            #list_file.write(str(frame_index)+' ')
+            #if len(boxs) != 0:
+            #    for i in range(0,len(boxs)):
+            #        list_file.write(str(boxs[i][0]) + ' '+str(boxs[i][1]) + ' '+str(boxs[i][2]) + ' '+str(boxs[i][3]) + ' ')
+            #        list_file.write('%s %s '%(pre_classes[i],scores[i]))
+            #list_file.write('\n')
             
         fps  = ( fps + (1./(time.time()-t1)) ) / 2
         print("fps= %f"%(fps))
@@ -149,7 +150,7 @@ def main(video_path, output_path=""):
     video_capture.release()
     if writeVideo_flag:
         out.release()
-        list_file.close()
+        #list_file.close()
     cv2.destroyAllWindows()
 
 if __name__ == '__main__':

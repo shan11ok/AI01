@@ -73,6 +73,8 @@ class Tracker:
         for track_idx, detection_idx in matches:
             num = self.tracks[track_idx].update(
                 self.kf, detections[detection_idx], line)
+            if num == 0:
+                continue
             if self.counts.get(self.tracks[track_idx].pre_class):
                 self.counts[self.tracks[track_idx].pre_class] += num
             else:
