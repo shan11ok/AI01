@@ -1,0 +1,224 @@
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
+
+from __future__ import division, print_function, absolute_import
+
+import argparse
+import os
+from timeit import time
+import warnings
+import sys
+import cv2
+import numpy as np
+from PIL import Image
+from yolo import YOLO
+
+
+from deep_sort import preprocessing
+from deep_sort import nn_matching
+from deep_sort.detection import Detection
+from deep_sort.tracker import Tracker
+from tools import generate_detections as gdet
+from deep_sort.detection import Detection as ddet
+warnings.filterwarnings('ignore')
+
+#0：黑；1：红；2：绿；3：黄；4：蓝；5：洋红；6：青；7：白
+COLOR = [(0,0,0), (0,0,255), (0,255,0), (0,255,255), (255,0,0), (255,0,255), (255,255,0), (255,255,255)]
+
+# Return true if line segments AB and CD intersect
+def intersect(A,B,C,D):
+	return ccw(A,C,D) != ccw(B,C,D) and ccw(A,B,C) != ccw(A,B,D)
+
+def ccw(A,B,C):
+	return (C[1]-A[1]) * (B[0]-A[0]) > (B[1]-A[1]) * (C[0]-A[0])
+
+def main(video_path, output_path="", linepos=0.5, accl=0., font_color=7, max_age=7):
+
+   # Definition of the parameters
+    max_cosine_distance = 0.3
+    nn_budget = None
+    nms_max_overlap = 0.7
+
+   # deep_sort 
+    model_filename = 'model_data/mars-small128.pb'
+    encoder = gdet.create_box_encoder(model_filename,batch_size=1)
+
+    #用于道路透视转换的矩形信息
+    #依次为：视频帧速率，行车方向轴，行车方向上矩形实际长度，按逆时针方向的四顶点坐标（左上顶点、左下顶点、右下顶点、右上顶点）
+    #axis, distance, plt, plb, prb, prt
+    #axis：0-横向，1-纵向。行车方向为 左上->右上 或者 右上->左上 时，为横向；行车方向为 左上->左下 或者 左下->左上时，为纵向
+    #后续该信息将外置到配置条件，每个摄像位置保存一份
+    trans_rect = [10.0,1,66.0,(456,247),(194,439),(307,444),(492,248)]
+
+    metric = nn_matching.NearestNeighborDistanceMetric("cosine", max_cosine_distance, nn_budget)
+    tracker = Tracker(metric, trans_rect, accl,)
+
+    writeVideo_flag = True 
+    
+    video_capture = cv2.VideoCapture(video_path)
+    if not video_capture.isOpened():
+        raise IOError("Couldn't open webcam or video")
+
+    video_FourCC    = int(video_capture.get(cv2.CAP_PROP_FOURCC))
+    video_fps       = video_capture.get(cv2.CAP_PROP_FPS)
+    video_size      = (int(video_capture.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                        int(video_capture.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+    w = int(video_capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+    h = int(video_capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    w -= w % 32
+    h -= h % 32
+    yolo = YOLO((w,h))
+    #yolo = YOLO((416,416))
+
+    line = [(0, int(h*linepos)), (w, int(h*linepos))]
+
+    isOutput = True if output_path != "" else False
+    if isOutput:
+        #print("!!! TYPE:", type(output_path), type(video_FourCC), type(video_fps), type(video_size))
+        out = cv2.VideoWriter(output_path, video_FourCC, video_fps, video_size)
+
+    #if writeVideo_flag:
+    # Define the codec and create VideoWriter object
+    #    w = int(video_capture.get(3))
+    #    h = int(video_capture.get(4))
+    #    fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+    #    out = cv2.VideoWriter('output.avi', fourcc, 15, (w, h))
+    #list_file = open('detection.txt', 'w')
+    frame_index = -1 
+
+    min_speed = 0.
+    max_speed = 0.
+
+    fps = 0.0
+    while True:
+        ret, frame = video_capture.read()  # frame shape 640*480*3
+        if ret != True:
+            break
+        t1 = time.time()
+
+       # image = Image.fromarray(frame)
+        image = Image.fromarray(frame[...,::-1]) #bgr to rgb
+        boxs,pre_classes,scores = yolo.detect_image(image)
+       # print("box_num",len(boxs))
+        features = encoder(frame,boxs)
+        
+        # score to 1.0 here).
+        detections = [Detection(bbox, pre_class, score, feature) for bbox, pre_class, score, feature in zip(boxs, pre_classes, scores, features)]
+        
+        # Run non-maxima suppression.
+        boxes_np = np.array([d.tlwh for d in detections])
+        scores_np = np.array([d.confidence for d in detections])
+        indices = preprocessing.non_max_suppression(boxes_np, nms_max_overlap, scores_np)
+        detections = [detections[i] for i in indices]
+        
+        # Call the tracker
+        tracker.predict()
+        counter = tracker.update(detections, line)
+        
+        for track in tracker.tracks:
+            if not track.is_confirmed() or track.time_since_update > 1:
+                continue 
+            bbox = track.to_tlbr()
+            p0 = track.last_center()
+            p1 = track.center()
+            #vote_str = ' '.join(['%s %d'%(x,track.class_vote[x]) for x in track.class_vote])
+            #mean_str = ' '.join(['%.1f'%(x) for x in track.mean])
+            #avg_accl = np.mean(track.accl_deque,axis=0)
+            #vel_str = ' '.join(['%.1f'%(x) for x in avg_accl])
+            cv2.line(frame, p0, p1, (0,0,255), 3)
+            cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])),(255,255,255), 2)
+            #cv2.putText(frame, '%s_%d_%.2f'%(track.pre_class,track.track_id,track.speed),(int(bbox[0]), int(bbox[1])),cv2.FONT_HERSHEY_DUPLEX, 0.6, (0,0,0),1)
+            if track.freeze_speed:
+                curr_speed = track.speed
+                if curr_speed > max_speed:
+                    max_speed = curr_speed
+                if curr_speed < min_speed or min_speed == 0:
+                    min_speed = curr_speed
+                cv2.putText(frame, '%.1fkm/h'%(curr_speed),(int(bbox[0]), int(bbox[1])),cv2.FONT_HERSHEY_DUPLEX, 0.6, (0,0,0),1)
+            #cv2.putText(frame, '%s_%d'%(vel_str,track.track_id),(int(bbox[0]), int(bbox[1])),cv2.FONT_HERSHEY_DUPLEX, 0.6, (0,0,0),1)
+
+        for det in detections:
+            bbox = det.to_tlbr()
+            cv2.rectangle(frame,(int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])),(255,0,0), 2)
+
+	    # draw line
+        cv2.line(frame, line[0], line[1], (0, 255, 255), 5)
+
+	    # draw counter
+        frame_index = frame_index + 1
+        start_x = 30
+        start_y = 30
+        cv2.putText(frame, 'frame:%d'%(frame_index), (start_x, start_y), cv2.FONT_HERSHEY_DUPLEX, 0.8, COLOR[font_color], 2)
+        start_y += 20
+        cv2.putText(frame, 'count:%d'%(sum(counter.values())), (start_x, start_y), cv2.FONT_HERSHEY_DUPLEX, 0.8, COLOR[font_color], 2)
+        start_y += 20        
+        cv2.putText(frame, 'vhigh.:%.1f'%(max_speed), (start_x, start_y), cv2.FONT_HERSHEY_DUPLEX, 0.8, COLOR[font_color], 2)
+        start_y += 20
+        cv2.putText(frame, 'vlow:%.1f'%(min_speed), (start_x, start_y), cv2.FONT_HERSHEY_DUPLEX, 0.8, COLOR[font_color], 2)
+        start_y += 20
+        '''for pre_class in counter:
+            cv2.putText(frame, '%s:%d'%(pre_class,counter[pre_class]), (start_x, start_y), cv2.FONT_HERSHEY_DUPLEX, 0.8, COLOR[font_color], 2)
+            start_y += 20
+        '''
+        cv2.imshow('', frame)
+        
+        if writeVideo_flag:
+            # save a frame
+            out.write(frame)
+            '''list_file.write(str(frame_index)+' ')
+            if len(boxs) != 0:
+                for i in range(0,len(boxs)):
+                    list_file.write(str(boxs[i][0]) + ' '+str(boxs[i][1]) + ' '+str(boxs[i][2]) + ' '+str(boxs[i][3]) + ' ')
+                    list_file.write('%s %s '%(pre_classes[i],scores[i]))
+                pick_str = ' '.join(['%d'%(x) for x in indices])
+                list_file.write('Pick num is: %s'%(pick_str))
+            list_file.write('\n')'''
+            
+        fps  = ( fps + (1./(time.time()-t1)) ) / 2
+        print("fps= %f"%(fps))
+        
+        # Press Q to stop!
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    video_capture.release()
+    if writeVideo_flag:
+        out.release()
+        #list_file.close()
+    cv2.destroyAllWindows()
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(argument_default=argparse.SUPPRESS)
+    parser.add_argument(
+        "--input", nargs='?', type=str,required=False,default='./path2your_video',
+        help = "Video input path"
+    )
+
+    parser.add_argument(
+        "--output", nargs='?', type=str, default="",
+        help = "[Optional] Video output path"
+    )
+
+    parser.add_argument(
+        "--linepos", nargs='?', type=float, default="0.5",
+        help = "[Optional] reference line position"
+    )
+
+    parser.add_argument(
+        "--accl", nargs='?', type=float, default="0.",
+        help = "[Optional] car acceleration"
+    )
+
+    parser.add_argument(
+        "--color", nargs='?', type=int, default="7",
+        help = "[Optional] car acceleration"
+    )
+
+    parser.add_argument(
+        "--maxage", nargs='?', type=int, default="7",
+        help = "[Optional] car acceleration"
+    )
+
+    FLAGS = parser.parse_args()
+
+    main(FLAGS.input, FLAGS.output, FLAGS.linepos, FLAGS.accl, FLAGS.color, FLAGS.maxage)
