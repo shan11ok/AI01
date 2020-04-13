@@ -37,13 +37,13 @@ class Tracker:
 
     """
 
-    def __init__(self, metric, accl=0., max_age=7, n_init=3, max_iou_distance=0.7):
+    def __init__(self, metric, direction=2, accl=0., max_age=7, n_init=3, max_iou_distance=0.7):
         self.metric = metric
         self.max_iou_distance = max_iou_distance
         self.max_age = max_age
         self.n_init = n_init
 
-        self.kf = kalman_filter.KalmanFilter(accl)
+        self.kf = kalman_filter.KalmanFilter(direction, accl)
         self.tracks = []
         self._next_id = 1
         self.counts = {}
@@ -77,7 +77,7 @@ class Tracker:
             if num == 0 or self.tracks[track_idx].track_id in self.count_deque:
                 continue
             self.count_deque.append(self.tracks[track_idx].track_id)
-            track_type = '%s %s'%(self.tracks[track_idx].pre_class, 'in' if num==1 else 'out')
+            track_type = '%s %s'%('来向' if num==1 else '去向', self.tracks[track_idx].pre_class)
             if self.counts.get(track_type):
                 self.counts[track_type] += 1
             else:
