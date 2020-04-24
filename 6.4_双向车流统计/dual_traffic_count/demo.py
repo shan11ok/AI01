@@ -153,14 +153,18 @@ def main(video_path, output_path="", linepos=0.5, direction=2, accl=0., stat_col
         #cv2.putText(frame, 'frame:%d'%(frame_index), (start_x, start_y), cv2.FONT_HERSHEY_DUPLEX, 0.8, COLOR[font_color], 2)
         #def draw_text(frame, text, position, font_file, size, color):
         #frame = draw_text(frame, '帧序:%d'%(frame_index), (start_x, start_y), "./Font/zhcn.ttf", 20, COLOR[font_color])
+        draw.text((start_x+2, start_y+2), '帧序:%d'%(frame_index), RGB_COLOR[0], font=stat_font)
         draw.text((start_x, start_y), '帧序:%d'%(frame_index), RGB_COLOR[stat_color], font=stat_font)
+
         start_y += 30
         track_type_list = sorted(counter.keys())
         track_type_list.reverse()
         for track_type in track_type_list:
             #frame = draw_text(frame, '%s:%d'%(track_type,counter[track_type]), (start_x, start_y), "./Font/zhcn.ttf", 20, COLOR[font_color])
             #cv2.putText(frame, '%s:%d'%(pre_class,counter[pre_class]), (start_x, start_y), cv2.FONT_HERSHEY_DUPLEX, 0.8, COLOR[font_color], 2)
+            draw.text((start_x+2, start_y+2), '%s:%d'%(track_type,counter[track_type]), RGB_COLOR[0], font=stat_font)
             draw.text((start_x, start_y), '%s:%d'%(track_type,counter[track_type]), RGB_COLOR[stat_color], font=stat_font)
+
             start_y += 30
         
         frame = cv2.cvtColor(np.array(pilimg), cv2.COLOR_RGB2BGR)
