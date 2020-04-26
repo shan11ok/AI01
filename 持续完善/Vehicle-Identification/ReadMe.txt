@@ -1,5 +1,5 @@
-# 车型识别模型训练程序
+# 杞﹀瀷璇嗗埆妯″瀷璁粌绋嬪簭
 transfer_learning.py
 
-# 车型识别程序
+# 杞﹀瀷璇嗗埆绋嬪簭
 vehicle_identification.py
