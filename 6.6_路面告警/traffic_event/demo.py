@@ -25,6 +25,15 @@ warnings.filterwarnings('ignore')
 BGR_COLOR = [(0,0,0), (0,0,255), (0,255,0), (0,255,255), (255,0,0), (255,0,255), (255,255,0), (255,255,255)]
 RGB_COLOR = [(0,0,0), (255,0,0), (0,255,0), (255,255,0), (0,0,255), (255,0,255), (0,255,255), (255,255,255)]
 
+#cv2.putText(frame, 'frame:%d'%(frame_index), (start_x, start_y), cv2.FONT_HERSHEY_DUPLEX, 0.8, COLOR[font_color], 2)
+'''def draw_text(frame, text, position, font_file, size, color):
+    cv2img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    pilimg = Image.fromarray(cv2img)
+    draw = ImageDraw.Draw(pilimg)
+    font = ImageFont.truetype(font_file, size, encoding="utf-8")
+    draw.text(position, text, color, font=font)
+    return cv2.cvtColor(np.array(pilimg), cv2.COLOR_RGB2BGR)'''
+
 # Return true if line segments AB and CD intersect
 def intersect(A,B,C,D):
 	return ccw(A,C,D) != ccw(B,C,D) and ccw(A,B,C) != ccw(A,B,D)
@@ -32,7 +41,7 @@ def intersect(A,B,C,D):
 def ccw(A,B,C):
 	return (C[1]-A[1]) * (B[0]-A[0]) > (B[1]-A[1]) * (C[0]-A[0])
 
-def main(video_path, output_path="", linepos=0.5, accl=0., stat_color=7, label_color=7, max_age=7):
+def main(video_path, output_path="", linepos=0.5, direction=2, accl=0., stat_color=7, label_color=7, max_age=7):
 
    # Definition of the parameters
     max_cosine_distance = 0.3
@@ -42,16 +51,9 @@ def main(video_path, output_path="", linepos=0.5, accl=0., stat_color=7, label_c
    # deep_sort 
     model_filename = 'model_data/mars-small128.pb'
     encoder = gdet.create_box_encoder(model_filename,batch_size=1)
-
-    #用于道路透视转换的矩形信息
-    #依次为：视频帧速率，行车方向轴，行车方向上矩形实际长度，按逆时针方向的四顶点坐标（左上顶点、左下顶点、右下顶点、右上顶点）
-    #axis, distance, plt, plb, prb, prt
-    #axis：0-横向，1-纵向。行车方向为 左上->右上 或者 右上->左上 时，为横向；行车方向为 左上->左下 或者 左下->左上时，为纵向
-    #后续该信息将外置到配置条件，每个摄像位置保存一份
-    trans_rect = [10.0,1,66.0,(456,247),(194,439),(307,444),(492,248)]
-
+    
     metric = nn_matching.NearestNeighborDistanceMetric("cosine", max_cosine_distance, nn_budget)
-    tracker = Tracker(metric, trans_rect, accl,)
+    tracker = Tracker(metric, direction, accl)
 
     writeVideo_flag = True 
     
@@ -68,6 +70,7 @@ def main(video_path, output_path="", linepos=0.5, accl=0., stat_color=7, label_c
     w -= w % 32
     h -= h % 32
     yolo = YOLO((w,h))
+    RT = w/700
     #yolo = YOLO((416,416))
 
     line = [(0, int(h*linepos)), (w, int(h*linepos))]
@@ -85,10 +88,7 @@ def main(video_path, output_path="", linepos=0.5, accl=0., stat_color=7, label_c
     #    out = cv2.VideoWriter('output.avi', fourcc, 15, (w, h))
     #list_file = open('detection.txt', 'w')
     frame_index = -1 
-
-    min_speed = 0.
-    max_speed = 0.
-
+        
     fps = 0.0
     while True:
         ret, frame = video_capture.read()  # frame shape 640*480*3
@@ -119,60 +119,55 @@ def main(video_path, output_path="", linepos=0.5, accl=0., stat_color=7, label_c
         pilimg = Image.fromarray(cv2img)
         draw = ImageDraw.Draw(pilimg)
         font_file = "./Font/ARKai_C.ttf"
-        stat_font = ImageFont.truetype(font_file, 25, encoding="utf-8")
-        label_font = ImageFont.truetype(font_file, 20, encoding="utf-8")
+        big_font_size = 35
+        small_font_size = 30
+        stat_font = ImageFont.truetype(font_file, int(big_font_size*RT), encoding="utf-8")
+        label_font = ImageFont.truetype(font_file, int(small_font_size*RT), encoding="utf-8")
 
         for track in tracker.tracks:
-            if not track.is_confirmed() or track.time_since_update > 1:
+            if not track.is_confirmed() or track.time_since_update > 1 or track.incident_typ == 0:
                 continue 
             bbox = track.to_tlbr()
             p0 = track.last_center()
             p1 = track.center()
-            #vote_str = ' '.join(['%s %d'%(x,track.class_vote[x]) for x in track.class_vote])
-            #mean_str = ' '.join(['%.1f'%(x) for x in track.mean])
-            #avg_accl = np.mean(track.accl_deque,axis=0)
-            #vel_str = ' '.join(['%.1f'%(x) for x in avg_accl])
-            #cv2.line(frame, p0, p1, (0,0,255), 3)
-            #cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])),(255,255,255), 2)
             draw.line([p0,p1],RGB_COLOR[label_color],3)
             draw.rectangle([(int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3]))],None, RGB_COLOR[label_color], 2)
-            #cv2.putText(frame, '%s_%d_%.2f'%(track.pre_class,track.track_id,track.speed),(int(bbox[0]), int(bbox[1])),cv2.FONT_HERSHEY_DUPLEX, 0.6, (0,0,0),1)
-            if track.freeze_speed:
-                curr_speed = track.speed
-                if curr_speed > max_speed:
-                    max_speed = curr_speed
-                if curr_speed < min_speed or min_speed == 0:
-                    min_speed = curr_speed
-                #cv2.putText(frame, '%.1fkm/h'%(curr_speed),(int(bbox[0]), int(bbox[1])),cv2.FONT_HERSHEY_DUPLEX, 0.6, (0,0,0),1)
-                draw.text((int(bbox[0]), int(bbox[1])-20), '%.1fkm/h'%(curr_speed), RGB_COLOR[label_color], font=label_font)
+            draw.text((int(bbox[0]-small_font_size*RT*3)+2, int(bbox[1]-small_font_size*RT)+2), '%s_%d'%(track.pre_class,track.track_id), RGB_COLOR[0], font=label_font)
+            draw.text((int(bbox[0]-small_font_size*RT*3), int(bbox[1]-small_font_size*RT)), '%s_%d'%(track.pre_class,track.track_id), RGB_COLOR[label_color], font=label_font)
+            #cv2.line(frame, p0, p1, (0,0,255), 3)
+            #cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])),(255,255,255), 2)
+            #frame = draw_text(frame, '%s_%d'%(track.pre_class,track.track_id), (int(bbox[0]), int(bbox[1])-20), "./Font/zhcn.ttf", 20, COLOR[font_color])
+            #cv2.putText(frame, '%s_%d'%(track.pre_class,track.track_id),(int(bbox[0]), int(bbox[1])),cv2.FONT_HERSHEY_DUPLEX, 0.6, (0,0,0),1)
             #cv2.putText(frame, '%s_%d'%(vel_str,track.track_id),(int(bbox[0]), int(bbox[1])),cv2.FONT_HERSHEY_DUPLEX, 0.6, (0,0,0),1)
 
-        for det in detections:
+        '''for det in detections:
             bbox = det.to_tlbr()
             #cv2.rectangle(frame,(int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])),(255,0,0), 2)
-            draw.rectangle([(int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3]))],None, RGB_COLOR[4], 2)
+            draw.rectangle([(int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3]))],None, RGB_COLOR[4], 2)'''
 
 	    # draw line
         #cv2.line(frame, line[0], line[1], (0, 255, 255), 5)
-        draw.line([line[0], line[1]],RGB_COLOR[3],5)
+        #draw.line([line[0], line[1]],RGB_COLOR[3],5)
 
 	    # draw counter
         frame_index = frame_index + 1
         start_x = 30
-        start_y = 80
+        start_y = 120
         #cv2.putText(frame, 'frame:%d'%(frame_index), (start_x, start_y), cv2.FONT_HERSHEY_DUPLEX, 0.8, COLOR[font_color], 2)
+        #def draw_text(frame, text, position, font_file, size, color):
+        #frame = draw_text(frame, '帧序:%d'%(frame_index), (start_x, start_y), "./Font/zhcn.ttf", 20, COLOR[font_color])
+        draw.text((start_x+2, start_y+2), '帧序:%d'%(frame_index), RGB_COLOR[0], font=stat_font)
         draw.text((start_x, start_y), '帧序:%d'%(frame_index), RGB_COLOR[stat_color], font=stat_font)
-        start_y += 30
-        #cv2.putText(frame, 'count:%d'%(sum(counter.values())), (start_x, start_y), cv2.FONT_HERSHEY_DUPLEX, 0.8, COLOR[font_color], 2)
-        draw.text((start_x, start_y), '计数:%d'%(sum(counter.values())), RGB_COLOR[stat_color], font=stat_font)
-        start_y += 30        
-        #cv2.putText(frame, 'vhigh.:%.1f'%(max_speed), (start_x, start_y), cv2.FONT_HERSHEY_DUPLEX, 0.8, COLOR[font_color], 2)
-        draw.text((start_x, start_y), '最高时速:%.1fkm/h'%(max_speed), RGB_COLOR[stat_color], font=stat_font)
-        start_y += 30
-        #cv2.putText(frame, 'vlow:%.1f'%(min_speed), (start_x, start_y), cv2.FONT_HERSHEY_DUPLEX, 0.8, COLOR[font_color], 2)
-        draw.text((start_x, start_y), '最低时速:%.1fkm/h'%(min_speed), RGB_COLOR[stat_color], font=stat_font)
-        start_y += 30
-
+        start_y += big_font_size*RT
+        track_type_list = sorted(counter.keys())
+        track_type_list.reverse()
+        for track_type in track_type_list:
+            #frame = draw_text(frame, '%s:%d'%(track_type,counter[track_type]), (start_x, start_y), "./Font/zhcn.ttf", 20, COLOR[font_color])
+            #cv2.putText(frame, '%s:%d'%(pre_class,counter[pre_class]), (start_x, start_y), cv2.FONT_HERSHEY_DUPLEX, 0.8, COLOR[font_color], 2)
+            draw.text((start_x+2, start_y+2), '%s:%d'%(track_type,counter[track_type]), RGB_COLOR[0], font=stat_font)
+            draw.text((start_x, start_y), '%s:%d'%(track_type,counter[track_type]), RGB_COLOR[stat_color], font=stat_font)
+            start_y += big_font_size*RT
+        
         frame = cv2.cvtColor(np.array(pilimg), cv2.COLOR_RGB2BGR)
         cv2.imshow('', frame)
         
@@ -219,6 +214,11 @@ if __name__ == '__main__':
     )
 
     parser.add_argument(
+        "--direction", nargs='?', type=int, default="2",
+        help = "[Optional] direction, 1: one direction, 2: dual direction"
+    )
+
+    parser.add_argument(
         "--accl", nargs='?', type=float, default="0.",
         help = "[Optional] car acceleration"
     )
@@ -235,9 +235,9 @@ if __name__ == '__main__':
 
     parser.add_argument(
         "--maxage", nargs='?', type=int, default="7",
-        help = "[Optional] car acceleration"
+        help = "[Optional] maxage"
     )
 
     FLAGS = parser.parse_args()
 
-    main(FLAGS.input, FLAGS.output, FLAGS.linepos, FLAGS.accl, FLAGS.stat_color, FLAGS.label_color, FLAGS.maxage)
+    main(FLAGS.input, FLAGS.output, FLAGS.linepos, FLAGS.direction, FLAGS.accl, FLAGS.stat_color, FLAGS.label_color, FLAGS.maxage)
