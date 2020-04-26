@@ -1,0 +1,3 @@
+model_checkpoint_path: "d:\\AI_program\\CarPlateIdentity\\code\\./carIdentityData/model/char_recongnize/model.ckpt-530"
+all_model_checkpoint_paths: "d:\\AI_program\\CarPlateIdentity\\code\\./carIdentityData/model/char_recongnize/model.ckpt-500"
+all_model_checkpoint_paths: "d:\\AI_program\\CarPlateIdentity\\code\\./carIdentityData/model/char_recongnize/model.ckpt-530"
