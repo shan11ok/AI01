@@ -177,7 +177,8 @@ class Track:
             self.state = TrackState.Confirmed
         P0 = self.last_mean[:2].copy()
         P1 = self.mean[:2].copy()
-        
+        #self.direction = np.sign(self.mean[:4]-self.last_mean[:4])
+
         '''new_center = detection.to_xyah()[:2].copy()
         cur_vel = new_center - self.cur_center
         self.cur_accl = cur_vel - self.cur_vel

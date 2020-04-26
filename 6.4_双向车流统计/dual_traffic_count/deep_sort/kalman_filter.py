@@ -37,7 +37,7 @@ class KalmanFilter(object):
 
     """
 
-    def __init__(self, accl):
+    def __init__(self, direction, accl):
         ndim, dt = 4, 1.
 
         # Create Kalman filter model matrices.
@@ -61,6 +61,7 @@ class KalmanFilter(object):
             0,
             dt*self._velocity_accl]
         self._accl_mat = np.array(accl)
+        self.direction = direction
 
         '''dt_orgn_mat = np.array([0.5*dt*dt,dt])
         dt_mult_mat = np.array([[1,1,1,1,0,0,0,0],[0,0,0,0,1,1,1,1]],dtype='float')
@@ -134,7 +135,10 @@ class KalmanFilter(object):
 
         #accl_mat = np.multiply(self._dt_mat, np.dot(self._accl_mult_mat.T, accl))
         #mean = np.dot(self._motion_mat, mean) + accl_mat
-        mean = np.dot(self._motion_mat, mean) + self._accl_mat * np.append(direction,direction)
+        if self.direction == 1:
+            mean = np.dot(self._motion_mat, mean) + self._accl_mat #* np.append(direction,direction)
+        else:
+            mean = np.dot(self._motion_mat, mean) + self._accl_mat * np.append(direction,direction)
         covariance = np.linalg.multi_dot((
             self._motion_mat, covariance, self._motion_mat.T)) + motion_cov
 
