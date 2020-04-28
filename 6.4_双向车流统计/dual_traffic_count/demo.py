@@ -130,6 +130,7 @@ def main(video_path, output_path="", linepos=0.5, direction=2, accl=0., stat_col
             p1 = track.center()
             draw.line([p0,p1],RGB_COLOR[label_color],3)
             draw.rectangle([(int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3]))],None, RGB_COLOR[label_color], 2)
+            draw.text((int(bbox[0])+2, int(bbox[1])-20+2), '%s_%d'%(track.pre_class,track.track_id), RGB_COLOR[0], font=label_font)
             draw.text((int(bbox[0]), int(bbox[1])-20), '%s_%d'%(track.pre_class,track.track_id), RGB_COLOR[label_color], font=label_font)
             #cv2.line(frame, p0, p1, (0,0,255), 3)
             #cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])),(255,255,255), 2)

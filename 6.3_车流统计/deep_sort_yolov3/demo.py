@@ -10,8 +10,9 @@ import warnings
 import sys
 import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 from yolo import YOLO
+
 
 from deep_sort import preprocessing
 from deep_sort import nn_matching
@@ -21,6 +22,10 @@ from tools import generate_detections as gdet
 from deep_sort.detection import Detection as ddet
 warnings.filterwarnings('ignore')
 
+#0：黑；1：红；2：绿；3：黄；4：蓝；5：洋红；6：青；7：白
+BGR_COLOR = [(0,0,0), (0,0,255), (0,255,0), (0,255,255), (255,0,0), (255,0,255), (255,255,0), (255,255,255)]
+RGB_COLOR = [(0,0,0), (255,0,0), (0,255,0), (255,255,0), (0,0,255), (255,0,255), (0,255,255), (255,255,255)]
+
 # Return true if line segments AB and CD intersect
 def intersect(A,B,C,D):
 	return ccw(A,C,D) != ccw(B,C,D) and ccw(A,B,C) != ccw(A,B,D)
@@ -28,7 +33,7 @@ def intersect(A,B,C,D):
 def ccw(A,B,C):
 	return (C[1]-A[1]) * (B[0]-A[0]) > (B[1]-A[1]) * (C[0]-A[0])
 
-def main(video_path, output_path=""):
+def main(video_path, output_path="", stat_color=7, label_color=7):
 
    # Definition of the parameters
     max_cosine_distance = 0.3
@@ -100,7 +105,14 @@ def main(video_path, output_path=""):
         # Call the tracker
         tracker.predict()
         counter = tracker.update(detections, line)
-        
+
+        cv2img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        pilimg = Image.fromarray(cv2img)
+        draw = ImageDraw.Draw(pilimg)
+        font_file = "./Font/ARKai_C.ttf"
+        stat_font = ImageFont.truetype(font_file, 25, encoding="utf-8")
+        label_font = ImageFont.truetype(font_file, 20, encoding="utf-8")
+
         for track in tracker.tracks:
             if not track.is_confirmed() or track.time_since_update > 1:
                 continue 
@@ -109,36 +121,58 @@ def main(video_path, output_path=""):
             p1 = track.center()
             #vote_str = ' '.join(['%s %d'%(x,track.class_vote[x]) for x in track.class_vote])
             #mean_str = ' '.join(['%.1f'%(x) for x in track.mean])
-            cv2.line(frame, p0, p1, (0,0,255), 3)
-            cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])),(255,255,255), 2)
-            cv2.putText(frame, '%s_%d'%(track.pre_class,track.track_id),(int(bbox[0]), int(bbox[1])),cv2.FONT_HERSHEY_DUPLEX, 0.8, (0,0,0),1)
+            #avg_accl = np.mean(track.accl_deque,axis=0)
+            #vel_str = ' '.join(['%.1f'%(x) for x in avg_accl])
+            draw.line([p0,p1],RGB_COLOR[label_color],3)
+            draw.rectangle([(int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3]))],None, RGB_COLOR[label_color], 2)
+            draw.text((int(bbox[0])+2, int(bbox[1])-20+2), '%s_%d'%(track.pre_class,track.track_id), RGB_COLOR[0], font=label_font)
+            draw.text((int(bbox[0]), int(bbox[1])-20), '%s_%d'%(track.pre_class,track.track_id), RGB_COLOR[label_color], font=label_font)
+            #cv2.line(frame, p0, p1, (0,0,255), 3)
+            #cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])),(255,255,255), 2)
+            #cv2.putText(frame, '%s_%d'%(track.pre_class,track.track_id),(int(bbox[0]), int(bbox[1])),cv2.FONT_HERSHEY_DUPLEX, 0.6, COLOR[3],1)
+            #cv2.putText(frame, '%s_%d'%(vel_str,track.track_id),(int(bbox[0]), int(bbox[1])),cv2.FONT_HERSHEY_DUPLEX, 0.6, (0,0,0),1)
 
         for det in detections:
             bbox = det.to_tlbr()
-            cv2.rectangle(frame,(int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])),(255,0,0), 2)
+            #cv2.rectangle(frame,(int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])),(255,0,0), 2)
+            draw.rectangle([(int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3]))],None, RGB_COLOR[4], 2)
 
 	    # draw line
-        cv2.line(frame, line[0], line[1], (0, 255, 255), 5)
+        #cv2.line(frame, line[0], line[1], (0, 255, 255), 5)
+        draw.line([line[0], line[1]],RGB_COLOR[3],5)
 
 	    # draw counter
+        frame_index = frame_index + 1
         start_x = 30
-        start_y = 30
-        for pre_class in counter:
-            cv2.putText(frame, '%s:%d'%(pre_class,counter[pre_class]), (start_x, start_y), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 255, 255), 1)
-            start_y += 20
-        cv2.putText(frame, '%d'%(frame_index), (start_x, start_y), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 255, 255), 1)
+        start_y = 100
+        draw.text((start_x+2, start_y+2), '帧序:%d'%(frame_index), RGB_COLOR[0], font=stat_font)
+        draw.text((start_x, start_y), '帧序:%d'%(frame_index), RGB_COLOR[stat_color], font=stat_font)
+
+        start_y += 30
+        track_type_list = sorted(counter.keys())
+        track_type_list.reverse()
+        for track_type in track_type_list:
+            #cv2.putText(frame, '%s:%d'%(pre_class,counter[pre_class]), (start_x, start_y), cv2.FONT_HERSHEY_DUPLEX, 1.2, COLOR[0], 2)
+            draw.text((start_x+2, start_y+2), '%s:%d'%(track_type,counter[track_type]), RGB_COLOR[0], font=stat_font)
+            draw.text((start_x, start_y), '%s:%d'%(track_type,counter[track_type]), RGB_COLOR[stat_color], font=stat_font)
+            start_y += 30
+        #cv2.putText(frame, 'frame:%d'%(frame_index), (start_x, start_y), cv2.FONT_HERSHEY_DUPLEX, 1.2, COLOR[0], 2)
+
+        frame = cv2.cvtColor(np.array(pilimg), cv2.COLOR_RGB2BGR)
         cv2.imshow('', frame)
         
         if writeVideo_flag:
             # save a frame
+            
             out.write(frame)
-            frame_index = frame_index + 1
-            #list_file.write(str(frame_index)+' ')
-            #if len(boxs) != 0:
-            #    for i in range(0,len(boxs)):
-            #        list_file.write(str(boxs[i][0]) + ' '+str(boxs[i][1]) + ' '+str(boxs[i][2]) + ' '+str(boxs[i][3]) + ' ')
-            #        list_file.write('%s %s '%(pre_classes[i],scores[i]))
-            #list_file.write('\n')
+            '''list_file.write(str(frame_index)+' ')
+            if len(boxs) != 0:
+                for i in range(0,len(boxs)):
+                    list_file.write(str(boxs[i][0]) + ' '+str(boxs[i][1]) + ' '+str(boxs[i][2]) + ' '+str(boxs[i][3]) + ' ')
+                    list_file.write('%s %s '%(pre_classes[i],scores[i]))
+                pick_str = ' '.join(['%d'%(x) for x in indices])
+                list_file.write('Pick num is: %s'%(pick_str))
+            list_file.write('\n')'''
             
         fps  = ( fps + (1./(time.time()-t1)) ) / 2
         print("fps= %f"%(fps))
@@ -164,6 +198,16 @@ if __name__ == '__main__':
         "--output", nargs='?', type=str, default="",
         help = "[Optional] Video output path"
     )
+
+    parser.add_argument(
+        "--stat_color", nargs='?', type=int, default="7",
+        help = "[Optional] statistic data color"
+    )
+
+    parser.add_argument(
+        "--label_color", nargs='?', type=int, default="7",
+        help = "[Optional] label color"
+    )
     FLAGS = parser.parse_args()
 
-    main(FLAGS.input, FLAGS.output)
+    main(FLAGS.input, FLAGS.output, FLAGS.stat_color, FLAGS.label_color)

@@ -1,6 +1,7 @@
 # vim: expandtab:ts=4:sw=4
 import numpy as np
 
+en2zh = {'car':'轿车', 'truck':'卡车','bus':'客车','person':'行人'}
 
 class Detection(object):
     """
@@ -28,7 +29,8 @@ class Detection(object):
 
     def __init__(self, tlwh, pre_class, confidence, feature):
         self.tlwh = np.asarray(tlwh, dtype=np.float)
-        self.pre_class = pre_class
+        self.pre_class = pre_class if pre_class != 'train' else 'truck'
+        self.pre_class = en2zh[self.pre_class]
         self.confidence = float(confidence)
         self.feature = np.asarray(feature, dtype=np.float32)
 
