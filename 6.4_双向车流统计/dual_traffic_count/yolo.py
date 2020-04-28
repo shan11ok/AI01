@@ -95,7 +95,8 @@ class YOLO(object):
                 K.learning_phase(): 0
             })
 
-        road_objects = {'car','truck','bus','person','train'}
+        #road_objects = {'car','truck','bus','person','train'}
+        road_objects = {'car','truck','bus','train'}
         return_boxs = []
         return_class = []
         return_score = []
